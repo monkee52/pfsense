@@ -1161,6 +1161,99 @@ function interface_gre_configure(&$gre, $grekey = "") {
 	return $greif;
 }
 
+function interfaces_vxlan_configure($checkparent = 0, $realif = "") {
+	global $config, $g;
+	if (platform_booting()) {
+		echo gettext("Configuring VXLAN interfaces...");
+	}
+	if (is_array($config['vxlans']['vxlan']) && count($config['vxlans']['vxlan'])) {
+		foreach ($config['vxlans']['vxlan'] as $vxlan) {
+			if (empty($vxlan['vxlanif'])) {
+				$vxlan['vxlanif'] = "vxlan{$i}";
+			}
+			if (!empty($realif) && $realif != $vxlan['vxlanif']) {
+				continue;
+			}
+
+			if ($checkparent == 1) {
+				if (substr($vxlan['if'], 0, 4) == '_vip') {
+					continue;
+				}
+				if (substr($vxlan['if'], 0, 5) == '_lloc') {
+					continue;
+				}
+				if (!empty($config['interfaces'][$vxlan['if']]) && $config['interfaces'][$vxlan['if']]['ipaddrv6'] == "track6") {
+					continue;
+				}
+			} else if ($checkparent == 2) {
+				if ((substr($vxlan['if'], 0, 4) != '_vip' && substr($vxlan['if'], 0, 5) != '_lloc') &&
+				    (empty($config['interfaces'][$vxlan['if']]) || $config['interfaces'][$vxlan['if']]['ipaddrv6'] != "track6")) {
+				   	continue;
+				}
+			}
+			/* XXX: Maybe we should report any errors?! */
+			interface_vxlan_configure($vxlan);
+		}
+	}
+	if (platform_booting()) {
+		echo gettext("done.") . "\n";
+	}
+}
+
+function interface_vxlan_configure(&$vxlan) {
+	global $config, $g;
+
+	if (!is_array($vxlan)) {
+		log_error(gettext("VXLAN: called with wrong options. Problems with config!"));
+		return(NULL);
+	}
+	$realif = get_real_interface($vxlan['if']);
+	if (empty($realif)) {
+		log_error(gettext("interface_vxlan_configure called with if undefined."));
+		return(NULL);
+	}
+
+	$realifip = get_interface_ip($vxlan['if']);
+
+	/* make sure the parent interface is up */
+	interfaces_bring_up($realif);
+
+	if (platform_booting() || !(empty($vxlan['vxlanif']))) {
+		pfsense_interface_destroy($vxlan['vxlanif']);
+		pfsense_interface_create($vxlan['vxlanif']);
+		$vxlanif = $vxlan['vxlanif'];
+	} else {
+		$vxlanif = pfsense_interface_create("vxlan");
+	}
+
+	$ip_aslong = ip2long($vxlan['remote-addr'])
+
+	/* check if IP is multicast */
+	if (($ip_aslong & 0xf0000000) === 0xe0000000) {
+	    mwexec("/sbin/ifconfig {$vxlanif} vxlanid " . escapeshellarg($vxlan['vni']) . " vxlanlocal {$realifip} vxlangroup " . escapeshellarg($vxlan['remote-addr']) . " vxlanremoteport " . escapeshellarg($vxlan['remote-port']) . " vxlandev {$realif}");
+	} else {
+	    mwexec("/sbin/ifconfig {$vxlanif} vxlanid " . escapeshellarg($vxlan['vni']) . " vxlanlocal {$realifip} vxlanremote " . escapeshellarg($vxlan['remote-addr']) . " vxlanremoteport " . escapeshellarg($vxlan['remote-port']));
+	}
+
+	if ($vxlanif) {
+		interfaces_bring_up($vxlanif);
+	} else {
+		log_error(gettext("Could not bring vxlanif up -- variable not defined."));
+	}
+
+	/* configure interface if assigned */
+	$assignedif = convert_real_interface_to_friendly_interface_name($vxlanif);
+	if ($assignedif) {
+		if (isset($config['interfaces'][$assignedif]['enable'])) {
+			interface_configure($assignedif, true);
+		}
+	}
+
+	interfaces_bring_up($vxlanif);
+
+	return $vxlanif;
+}
+
 function interface_is_type($if = NULL, $type) {
 	global $config;
 	switch ($type) {
@@ -1179,6 +1272,10 @@ function interface_is_type($if = NULL, $type) {
 			$entry = 'lagg';
 			$entif = 'laggif';
 			break;
+		case "vxlan":
+			$list = 'vxlans';
+			$entry = 'vxlan';
+			$entif = 'vxlanif';
 		default:
 			break;
 	}
@@ -1592,6 +1689,8 @@ function interfaces_configure() {
 			$delayed_list[$if] = $ifname;
 		} else if (strstr($realif, "gif")) {
 			$delayed_list[$if] = $ifname;
+		} else if (strstr($realif, "vxlan")) {
+			$delayed_list[$if] = $ifname;
 		} else if (strstr($realif, "ovpn")) {
 			//echo "Delaying OpenVPN interface configuration...done.\n";
 			continue;
@@ -1629,6 +1728,9 @@ function interfaces_configure() {
 	/* set up BRIDGe virtual interfaces */
 	interfaces_bridge_configure(1);
 
+	/* set up VXLAN virtual interfaces */
+	interfaces_vxlan_configure(1);
+
 	foreach ($track6_list as $if => $ifname) {
 		if (platform_booting()) {
 			printf(gettext("Configuring %s interface..."), $ifname);
@@ -1652,6 +1754,9 @@ function interfaces_configure() {
 
 	/* set up GIF virtual interfaces */
 	interfaces_gif_configure(2);
+
+	/* set up VXLAN virtual interfaces */
+	interfaces_vxlan_configure(2);
 
 	foreach ($delayed_list as $if => $ifname) {
 		if (platform_booting()) {
@@ -3750,6 +3855,8 @@ function interface_virtual_create($interface) {
 		interfaces_gre_configure(0, $interface);
 	} else if (substr($interface, 0, 3) == "gif") {
 		interfaces_gif_configure(0, $interface);
+	} else if (substr($interface, 0, 5) == "vxlan") {
+		interfaces_vxlan_configure(0, $interface);
 	} else if (substr($interface, 0, 5) == "ovpns") {
 		if (is_array($config['openvpn']) && is_array($config['openvpn']['openvpn-server'])) {
 			foreach ($config['openvpn']['openvpn-server'] as $server) {
@@ -5918,9 +6025,11 @@ function interface_find_child_cfgmtu($realiface) {
 	if (!empty($interface)) {
 		$gifs = link_interface_to_gif($interface);
 		$gres = link_interface_to_gre($interface);
+		$vxlans = link_interface_to_vxlan($interface);
 	} else {
 		$gifs = array();
 		$gres = array();
+		$vxlans = array();
 	}
 
 	$mtu = 0;
@@ -5976,13 +6085,26 @@ function interface_find_child_cfgmtu($realiface) {
 			}
 		}
 	}
+	if (is_array($vxlans)) {
+		foreach ($vxlans as $vxlan) {
+			$ifass = convert_real_interface_to_friendly_interface_name($vxlan['vxlanif']);
+			if (empty($ifass)) {
+				continue;
+			}
+			if (!empty($config['interfaces'][$ifass]['mtu'])) {
+				if (intval($config['interfaces'][$ifass]['mtu']) > $mtu) {
+					$mtu = intval($config['interfaces'][$ifass]['mtu']);
+				}
+			}
+		}
+	}
 	$ifass = convert_real_interface_to_friendly_interface_name($bridge);
 	if (!empty($ifass) && !empty($config['interfaces'][$ifass]['mtu'])) {
 		if (intval($config['interfaces'][$ifass]['mtu']) > $mtu) {
 			$mtu = intval($config['interfaces'][$ifass]['mtu']);
 		}
 	}
-	unset($vlans, $bridge, $gifs, $gres, $ifass, $vlan);
+	unset($vlans, $bridge, $gifs, $gres, $vxlans, $ifass, $vlan);
 
 	return $mtu;
 }
@@ -6141,6 +6263,22 @@ function link_interface_to_gif($interface) {
 		foreach ($config['gifs']['gif'] as $gif) {
 			if ($gif['if'] == $interface) {
 				$result[] = $gif;
+			}
+		}
+	}
+
+	return $result;
+}
+
+function link_interface_to_vxlan($interface) {
+	global $config;
+
+	$result = array();
+
+	if (is_array($config['vxlans']['vxlan'])) {
+		foreach ($config['vxlans']['vxlan'] as $vxlan) {
+			if ($vxlan['if'] == $interface) {
+				$result[] = $vxlan;
 			}
 		}
 	}
