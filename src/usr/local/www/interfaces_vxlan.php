@@ -1,6 +1,6 @@
 <?php
 /*
- * interfaces_lagg.php
+ * interfaces_vxlan.php
  *
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
@@ -22,60 +22,53 @@
  */
 
 ##|+PRIV
-##|*IDENT=page-interfaces-lagg
-##|*NAME=Interfaces: LAGG:
-##|*DESCR=Allow access to the 'Interfaces: LAGG' page.
-##|*MATCH=interfaces_lagg.php*
+##|*IDENT=page-interfaces-vxlan
+##|*NAME=Interfaces: VXLAN
+##|*DESCR=Allow access to the 'Interfaces: VXLAN' page.
+##|*MATCH=interfaces_vxlan.php*
 ##|-PRIV
 
 require_once("guiconfig.inc");
+require_once("functions.inc");
 
-init_config_arr(array('laggs', 'lagg'));
-$a_laggs = &$config['laggs']['lagg'] ;
+init_config_arr(array('vxlans', 'vxlan'));
+$a_vxlans = &$config['vxlans']['vxlan'] ;
 
-function lagg_inuse($num) {
-	global $config, $a_laggs;
+function vxlan_inuse($num) {
+	global $config, $a_vxlans;
 
 	$iflist = get_configured_interface_list(true);
 	foreach ($iflist as $if) {
-		if ($config['interfaces'][$if]['if'] == $a_laggs[$num]['laggif']) {
+		if ($config['interfaces'][$if]['if'] == $a_vxlans[$num]['vxlanif']) {
 			return true;
 		}
 	}
 
-	if (is_array($config['vlans']['vlan']) && count($config['vlans']['vlan'])) {
-		foreach ($config['vlans']['vlan'] as $vlan) {
-			if ($vlan['if'] == $a_laggs[$num]['laggif']) {
-				return true;
-			}
-		}
-	}
 	return false;
 }
 
 if ($_POST['act'] == "del") {
 	if (!isset($_POST['id'])) {
 		$input_errors[] = gettext("Wrong parameters supplied");
-	} else if (empty($a_laggs[$_POST['id']])) {
+	} else if (empty($a_vxlans[$_POST['id']])) {
 		$input_errors[] = gettext("Wrong index supplied");
 	/* check if still in use */
-	} else if (lagg_inuse($_POST['id'])) {
-		$input_errors[] = gettext("This LAGG interface cannot be deleted because it is still being used.");
+	} else if (vxlan_inuse($_POST['id'])) {
+		$input_errors[] = gettext("This VXLAN tunnel cannot be deleted because it is still being used as an interface.");
 	} else {
-		pfSense_interface_destroy($a_laggs[$_POST['id']]['laggif']);
-		unset($a_laggs[$_POST['id']]);
+		pfSense_interface_destroy($a_vxlans[$_POST['id']]['vxlanif']);
+		unset($a_vxlans[$_POST['id']]);
 
 		write_config();
 
-		header("Location: interfaces_lagg.php");
+		header("Location: interfaces_vxlan.php");
 		exit;
 	}
 }
 
-$pgtitle = array(gettext("Interfaces"), gettext("LAGGs"));
+$pgtitle = array(gettext("Interfaces"), gettext("VXLANs"));
 $shortcut_section = "interfaces";
 include("head.inc");
-
 if ($input_errors) {
 	print_input_errors($input_errors);
 }
@@ -90,61 +83,58 @@ $tab_array[] = array(gettext("PPPs"), false, "interfaces_ppps.php");
 $tab_array[] = array(gettext("GREs"), false, "interfaces_gre.php");
 $tab_array[] = array(gettext("GIFs"), false, "interfaces_gif.php");
 $tab_array[] = array(gettext("Bridges"), false, "interfaces_bridge.php");
-$tab_array[] = array(gettext("LAGGs"), true, "interfaces_lagg.php");
-$tab_array[] = array(gettext("VXLANs"), false, "interfaces_vxlan.php");
+$tab_array[] = array(gettext("LAGGs"), false, "interfaces_lagg.php");
+$tab_array[] = array(gettext("VXLANs"), true, "interfaces_vxlan.php");
 display_top_tabs($tab_array);
 ?>
 <div class="panel panel-default">
-	<div class="panel-heading"><h2 class="panel-title"><?=gettext('LAGG Interfaces')?></h2></div>
+	<div class="panel-heading"><h2 class="panel-title"><?=gettext('VXLAN Interfaces')?></h2></div>
 	<div class="panel-body">
 		<div class="table-responsive">
 			<table class="table table-striped table-hover table-condensed table-rowdblclickedit">
 				<thead>
 					<tr>
 						<th><?=gettext("Interface"); ?></th>
-						<th><?=gettext("Members"); ?></th>
+						<th><?=gettext("Tunnel to &hellip;"); ?></th>
 						<th><?=gettext("Description"); ?></th>
 						<th><?=gettext("Actions"); ?></th>
 					</tr>
 				</thead>
 				<tbody>
-<?php
-
-$i = 0;
-
-foreach ($a_laggs as $lagg) {
+<?php foreach ($a_vxlans as $i => $vxlan):
+	if (substr($vxlan['if'], 0, 4) == "_vip") {
+		$if = convert_real_interface_to_friendly_descr(get_real_interface($vxlan['if']));
+	} else {
+		$if = $vxlan['if'];
+	}
 ?>
 					<tr>
 						<td>
-							<?=htmlspecialchars(strtoupper($lagg['laggif']))?>
+							<?=htmlspecialchars(convert_friendly_interface_to_friendly_descr($if))?>
 						</td>
 						<td>
-							<?=htmlspecialchars($lagg['members'])?>
+							<?=htmlspecialchars($vxlan['remote-addr'])?>
 						</td>
 						<td>
-							<?=htmlspecialchars($lagg['descr'])?>
+							<?=htmlspecialchars($vxlan['descr'])?>
 						</td>
 						<td>
-							<a class="fa fa-pencil"	title="<?=gettext('Edit LAGG interface')?>"	href="interfaces_lagg_edit.php?id=<?=$i?>"></a>
-							<a class="fa fa-trash"	title="<?=gettext('Delete LAGG interface')?>"	href="interfaces_lagg.php?act=del&amp;id=<?=$i?>" usepost></a>
+							<a class="fa fa-pencil"	title="<?=gettext('Edit VXLAN interface')?>"	href="interfaces_vxlan_edit.php?id=<?=$i?>"></a>
+							<a class="fa fa-trash"	title="<?=gettext('Delete VXLAN interface')?>"	href="interfaces_vxlan.php?act=del&amp;id=<?=$i?>" usepost></a>
 						</td>
 					</tr>
-<?php
-	$i++;
-}
-?>
+<?php endforeach; ?>
 				</tbody>
 			</table>
 		</div>
 	</div>
 </div>
 
- <nav class="action-buttons">
-	<a href="interfaces_lagg_edit.php" class="btn btn-success btn-sm">
+<nav class="action-buttons">
+	<a href="interfaces_vxlan_edit.php" class="btn btn-success btn-sm">
 		<i class="fa fa-plus icon-embed-btn"></i>
 		<?=gettext("Add")?>
 	</a>
 </nav>
-
 <?php
 include("foot.inc");

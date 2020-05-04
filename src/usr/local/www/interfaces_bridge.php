@@ -89,6 +89,7 @@ $tab_array[] = array(gettext("GREs"), false, "interfaces_gre.php");
 $tab_array[] = array(gettext("GIFs"), false, "interfaces_gif.php");
 $tab_array[] = array(gettext("Bridges"), true, "interfaces_bridge.php");
 $tab_array[] = array(gettext("LAGGs"), false, "interfaces_lagg.php");
+$tab_array[] = array(gettext("VXLANs"), false, "interfaces_vxlan.php");
 display_top_tabs($tab_array);
 ?>
 <div class="panel panel-default">
