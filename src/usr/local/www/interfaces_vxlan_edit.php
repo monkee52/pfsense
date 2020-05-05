@@ -33,7 +33,10 @@ require_once("functions.inc");
 
 init_config_arr(array('vxlans', 'vxlan'));
 $a_vxlans = &$config['vxlans']['vxlan'];
-$id = $_REQUEST['id'];
+
+if (is_numericint($_REQUEST['id'])) {
+	$id = $_REQUEST['id'];
+}
 
 if (isset($id) && $a_vxlans[$id]) {
 	$pconfig['if'] = $a_vxlans[$id]['if'];

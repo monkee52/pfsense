@@ -1163,9 +1163,7 @@ function interface_gre_configure(&$gre, $grekey = "") {
 
 function interfaces_vxlan_configure($checkparent = 0, $realif = "") {
 	global $config, $g;
-	if (platform_booting()) {
-		echo gettext("Configuring VXLAN interfaces...");
-	}
+
 	if (is_array($config['vxlans']['vxlan']) && count($config['vxlans']['vxlan'])) {
 		foreach ($config['vxlans']['vxlan'] as $vxlan) {
 			if (empty($vxlan['vxlanif'])) {
@@ -1195,9 +1193,6 @@ function interfaces_vxlan_configure($checkparent = 0, $realif = "") {
 			interface_vxlan_configure($vxlan);
 		}
 	}
-	if (platform_booting()) {
-		echo gettext("done.") . "\n";
-	}
 }
 
 function interface_vxlan_configure(&$vxlan) {
@@ -1219,14 +1214,14 @@ function interface_vxlan_configure(&$vxlan) {
 	interfaces_bring_up($realif);
 
 	if (platform_booting() || !(empty($vxlan['vxlanif']))) {
-		pfsense_interface_destroy($vxlan['vxlanif']);
-		pfsense_interface_create($vxlan['vxlanif']);
+		pfSense_interface_destroy($vxlan['vxlanif']);
+		pfSense_interface_create($vxlan['vxlanif']);
 		$vxlanif = $vxlan['vxlanif'];
 	} else {
-		$vxlanif = pfsense_interface_create("vxlan");
+		$vxlanif = pfSense_interface_create("vxlan");
 	}
 
-	$ip_aslong = ip2long($vxlan['remote-addr'])
+	$ip_aslong = ip2long($vxlan['remote-addr']);
 
 	/* check if IP is multicast */
 	if (($ip_aslong & 0xf0000000) === 0xe0000000) {
