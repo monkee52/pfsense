@@ -547,14 +547,6 @@ function system_hosts_generate() {
 	}
 	unset($hosts_array);
 
-	$fd = fopen("{$g['etc_path']}/hosts", "w");
-	if (!$fd) {
-		log_error(gettext(
-		    "Error: cannot open hosts file in system_hosts_generate()."
-		    ));
-		return 1;
-	}
-
 	/*
 	 * Do not remove this because dhcpleases monitors with kqueue it needs
 	 * to be killed before writing to hosts files.
@@ -562,6 +554,14 @@ function system_hosts_generate() {
 	if (file_exists("{$g['varrun_path']}/dhcpleases.pid")) {
 		sigkillbypid("{$g['varrun_path']}/dhcpleases.pid", "TERM");
 		@unlink("{$g['varrun_path']}/dhcpleases.pid");
+	}
+
+	$fd = fopen("{$g['etc_path']}/hosts", "w");
+	if (!$fd) {
+		log_error(gettext(
+		    "Error: cannot open hosts file in system_hosts_generate()."
+		    ));
+		return 1;
 	}
 
 	fwrite($fd, $hosts);
@@ -2417,8 +2417,18 @@ function system_identify_specific_platform() {
 	/* Try to guess from smbios strings */
 	unset($product);
 	unset($maker);
+	unset($bios);
 	$_gb = exec('/bin/kenv -q smbios.system.product 2>/dev/null', $product);
 	$_gb = exec('/bin/kenv -q smbios.system.maker 2>/dev/null', $maker);
+	$_gb = exec('/bin/kenv -q smbios.bios.version 2>/dev/null', $bios);
+
+	// AWS can only be identified via the bios version
+	if (stripos($bios[0], "amazon") !== false) {
+		return (array('name' => 'AWS', 'descr' => 'Amazon Web Services'));
+	} else  if (stripos($bios[0], "Google") !== false) {
+		return (array('name' => 'Google', 'descr' => 'Google Cloud Platform'));
+	}
+
 	switch ($product[0]) {
 		case 'FW7541':
 			return (array('name' => 'FW7541', 'descr' => 'Netgate FW7541'));
@@ -2501,7 +2511,11 @@ function system_identify_specific_platform() {
 			break;
 		case 'Virtual Machine':
 			if ($maker[0] == "Microsoft Corporation") {
-				return (array('name' => 'Hyper-V', 'descr' => 'Hyper-V Virtual Machine'));
+				if (stripos($bios[0], "Hyper") !== false) {
+					return (array('name' => 'Hyper-V', 'descr' => 'Hyper-V Virtual Machine'));
+				} else {
+					return (array('name' => 'Azure', 'descr' => 'Microsoft Azure'));
+				}
 			}
 			break;
 		case 'VMware Virtual Platform':

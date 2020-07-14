@@ -210,10 +210,9 @@ $ipsec_preshared_key_type = array(
 global $ipsec_closeactions;
 $ipsec_closeactions = array(
 	'' => gettext('Default'),
-	'none' => gettext('No action'),
-	'restart' => gettext('Restart/Reconnect'),
-	'clear' => gettext('Close connection and clear SA'),
-	'hold' => gettext('Close connection and reconnect on demand'),
+	'none' => gettext('Close connection and clear SA'),
+	'start' => gettext('Restart/Reconnect'),
+	'trap' => gettext('Close connection and reconnect on demand'),
 );
 
 global $p2_modes;
@@ -2607,6 +2606,9 @@ function ipsec_configure($restart = false) {
 	 * looping through the arrays to locate entries later. */
 	$tunnels = array();
 	foreach ($a_phase1 as $p1) {
+		if (empty($p1)) {
+			continue;
+		}
 		if (isset($p1['mobile']) && !isset($p1['disabled'])) {
 			$mobile_configured = true;
 		}
